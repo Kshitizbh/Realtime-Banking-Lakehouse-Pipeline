@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "banking-lakehouse"
+version = "0.1.0"
+description = "Real-time digital banking lakehouse: transactions, fraud alerts and reconciliation."
+requires-python = ">=3.11"
+dependencies = [
+    "boto3>=1.35",               # S3 client for SeaweedFS
+    "psycopg[binary]>=3.2",      # Postgres core-banking source
+    "python-dotenv>=1.0",        # loads .env for local runs
+    "requests>=2.32",            # REST APIs (FX rates, Iceberg REST)
+    "pandas>=2.2",
+    "pyarrow>=17",               # Parquet
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "ruff>=0.6",
+]
+# Added in later layers: pyspark, kafka client, dbt-trino, scikit-learn, streamlit.
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+markers = ["integration: needs the Docker stack running"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+"setup_project.py" = ["E501"]  # long placeholder texts

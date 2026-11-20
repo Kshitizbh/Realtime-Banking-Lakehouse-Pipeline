@@ -1,0 +1,119 @@
+# Real-Time Digital Banking Lakehouse - local stack
+#
+# Start only what you need with profiles (see Makefile):
+#   core          object storage (SeaweedFS) + Iceberg REST catalog + Postgres   ~1.8 GB
+#   spark         (next M0 layer)
+#   streaming     (next M0 layer)
+#   serving       (next M0 layer)
+#   orchestration (next M0 layer)
+#
+# Every service has a memory limit so one runaway container cannot starve WSL.
+# Versions are pinned in .env (checked 2026-11-20).
+
+name: banking-lakehouse
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"   # stop container logs from silently filling the disk
+    max-file: "3"
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # Object storage: S3-compatible API on :8333 (replaces MinIO, see docs/decisions/0001)
+  # `weed mini` runs master + volume + filer + S3 + admin UI in one process.
+  # ---------------------------------------------------------------------------
+  seaweedfs:
+    image: chrislusf/seaweedfs:${SEAWEEDFS_TAG:?set SEAWEEDFS_TAG in .env}
+    container_name: seaweedfs
+    profiles: ["core"]
+    environment:
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY:?set S3_ACCESS_KEY in .env}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY:?set S3_SECRET_KEY in .env}
+      S3_BUCKET: "${BUCKET_LANDING},${BUCKET_WAREHOUSE},${BUCKET_CHECKPOINTS}"
+    ports:
+      - "${S3_HOST_PORT:-8333}:8333"          # S3 API
+      - "${SEAWEEDFS_UI_PORT:-23646}:23646"   # admin UI
+    volumes:
+      - seaweedfs_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 8333 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    deploy:
+      resources:
+        limits: {memory: 512m, cpus: "1.0"}
+    restart: unless-stopped
+    logging: *default-logging
+
+  # ---------------------------------------------------------------------------
+  # Iceberg REST catalog: maps table names -> current metadata file.
+  # Backed by a SQLite file on a named volume so the catalog survives restarts
+  # (the image default is in-memory, which would lose every table on restart).
+  # ---------------------------------------------------------------------------
+  iceberg-rest:
+    image: apache/iceberg-rest-fixture:${ICEBERG_REST_TAG:?set ICEBERG_REST_TAG in .env}
+    container_name: iceberg-rest
+    profiles: ["core"]
+    depends_on:
+      seaweedfs:
+        condition: service_started
+    environment:
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY}
+      AWS_REGION: ${S3_REGION}
+      CATALOG_WAREHOUSE: s3://${BUCKET_WAREHOUSE}/
+      CATALOG_IO__IMPL: org.apache.iceberg.aws.s3.S3FileIO
+      CATALOG_S3_ENDPOINT: http://seaweedfs:8333
+      CATALOG_S3_PATH__STYLE__ACCESS: "true"     # SeaweedFS needs path-style URLs
+      CATALOG_URI: jdbc:sqlite:file:/home/iceberg/iceberg_catalog.db
+      CATALOG_JDBC_STRICT__MODE: "true"
+    ports:
+      - "${ICEBERG_REST_HOST_PORT:-8181}:8181"
+    volumes:
+      # /home/iceberg exists in the image and is owned by the non-root `iceberg`
+      # user, so the named volume inherits writable ownership.
+      - iceberg_catalog:/home/iceberg
+    deploy:
+      resources:
+        limits: {memory: 768m, cpus: "1.0"}
+    restart: unless-stopped
+    logging: *default-logging
+
+  # ---------------------------------------------------------------------------
+  # Core-banking OLTP database (source system for incremental extraction).
+  # First start runs docker/postgres/init/*.sql, which seeds customers + accounts
+  # from ./data/batch. Postgres 18 images mount data at /var/lib/postgresql.
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:${POSTGRES_TAG:?set POSTGRES_TAG in .env}
+    container_name: postgres
+    profiles: ["core"]
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    ports:
+      - "${POSTGRES_HOST_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+      - ./data/batch:/seed:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    deploy:
+      resources:
+        limits: {memory: 512m, cpus: "1.0"}
+    restart: unless-stopped
+    logging: *default-logging
+
+volumes:
+  seaweedfs_data:
+  iceberg_catalog:
+  postgres_data:
