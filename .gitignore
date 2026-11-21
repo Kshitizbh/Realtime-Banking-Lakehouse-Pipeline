@@ -1,4 +1,10 @@
+# Data (never commit)
 data/*
+!data/.gitkeep
+*.zip
+*.parquet
+*.xlsx
+
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
