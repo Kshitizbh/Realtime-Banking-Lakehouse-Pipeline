@@ -1,6 +1,6 @@
 """Train a scikit-learn fraud model.
 
-Milestone: M9
+Milestone: Stretch
 Inputs:  features + fraud labels
 Outputs: model artefact + metrics
 

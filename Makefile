@@ -8,11 +8,14 @@ PY := .venv/bin/python
 -include .env
 export
 
+# Fallback so older .env files without ANALYTICS_DB still work.
+ANALYTICS_DB_NAME := $(or $(ANALYTICS_DB),analytics)
+
 .DEFAULT_GOAL := help
 
 .PHONY: help
 help: ## Show this help
-	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS=":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
+	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS=":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
 
 # ---------- one-time setup ----------
 .PHONY: env scaffold venv
@@ -48,25 +51,36 @@ stats: ## Live CPU/memory per container
 	docker stats
 
 # ---------- checks ----------
-.PHONY: health smoke psql
+.PHONY: health smoke psql psql-analytics
 health: ## Quick health check of every core service
 	@echo "--- Iceberg REST catalog (expect JSON) ---"
 	@curl -sf http://localhost:$(ICEBERG_REST_HOST_PORT)/v1/config && echo || echo "FAIL: catalog not reachable"
 	@echo "--- SeaweedFS S3 API (expect HTTP 403 = up and requiring credentials) ---"
 	@curl -s -o /dev/null -w "HTTP %{http_code}\n" http://localhost:$(S3_HOST_PORT)/ || echo "FAIL: S3 not reachable"
-	@echo "--- Postgres seed (expect 5000 customers, 8000 accounts) ---"
-	@$(COMPOSE) exec -T postgres psql -U $(POSTGRES_USER) -d $(POSTGRES_DB) -tA \
-	  -c "select 'customers', count(*) from core_banking.customers union all select 'accounts', count(*) from core_banking.accounts;"
+	@echo "--- core_banking seed (expect branches 40, transaction_types 6, merchant_categories 8, customers 5000, accounts 8000) ---"
+	@$(COMPOSE) exec -T postgres psql -U $(POSTGRES_USER) -d $(POSTGRES_DB) -tA -c "\
+	  select 'branches', count(*) from core_banking.branches union all \
+	  select 'transaction_types', count(*) from core_banking.transaction_types union all \
+	  select 'merchant_categories', count(*) from core_banking.merchant_categories union all \
+	  select 'customers', count(*) from core_banking.customers union all \
+	  select 'accounts', count(*) from core_banking.accounts;"
+	@echo "--- analytics database (expect 3 tables: audit.file_ingestions, audit.pipeline_runs, quality.check_results) ---"
+	@$(COMPOSE) exec -T postgres psql -U $(POSTGRES_USER) -d $(ANALYTICS_DB_NAME) -tA -c "\
+	  select table_schema || '.' || table_name from information_schema.tables \
+	  where table_schema in ('audit','quality','serving') order by 1;"
 
 smoke: ## End-to-end test of the core stack (needs `make venv` and `make up-core`)
 	$(PY) -m pytest tests/integration/test_core_stack.py -v
 
-psql: ## Open a SQL shell on the core-banking DB
+psql: ## Open a SQL shell on the core_banking (source) DB
 	$(COMPOSE) exec postgres psql -U $(POSTGRES_USER) -d $(POSTGRES_DB)
+
+psql-analytics: ## Open a SQL shell on the analytics (audit/quality) DB
+	$(COMPOSE) exec postgres psql -U $(POSTGRES_USER) -d $(ANALYTICS_DB_NAME)
 
 # ---------- resets (destructive: local data only) ----------
 .PHONY: reset-postgres clean
-reset-postgres: ## Drop the Postgres volume and re-seed on next start
+reset-postgres: ## Drop the Postgres volume and re-run the init scripts (re-seeds both databases)
 	@read -p "Delete the Postgres volume and re-seed? [y/N] " a && [ "$$a" = "y" ]
 	$(COMPOSE) --profile core rm -sf postgres
 	docker volume rm banking-lakehouse_postgres_data

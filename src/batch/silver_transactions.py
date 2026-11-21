@@ -1,8 +1,8 @@
 """Bronze transactions -> silver: typed, deduplicated, reversals linked.
 
 Milestone: M3
-Inputs:  lakehouse.bronze.transactions
-Outputs: lakehouse.silver.transactions (MERGE on transaction_id).
+Inputs:  lakehouse.bronze.bronze_transactions
+Outputs: lakehouse.silver.silver_transactions (MERGE on transaction_id).
 
 TODO:
     1. Cast types; parse timestamps; validate enums against reference tables.

@@ -1,6 +1,6 @@
 """Build fraud features from silver.
 
-Milestone: M9
+Milestone: Stretch
 Inputs:  silver tables
 Outputs: feature DataFrame
 

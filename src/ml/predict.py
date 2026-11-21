@@ -1,6 +1,6 @@
 """Score transactions and write predictions.
 
-Milestone: M9
+Milestone: Stretch
 Inputs:  features + model
 Outputs: lakehouse.gold.fraud_predictions
 

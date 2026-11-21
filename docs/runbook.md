@@ -17,7 +17,8 @@ Keep `make stats` open while you work. Run `make down` when you stop for the day
 | SeaweedFS S3 API | http://localhost:8333 |
 | SeaweedFS admin UI | http://localhost:23646 |
 | Iceberg REST catalog | http://localhost:8181/v1/config |
-| Postgres | localhost:5432 (db/user from .env) |
+| Postgres `core_banking` (source) | localhost:5432, `make psql` |
+| Postgres `analytics` (audit, quality) | localhost:5432, `make psql-analytics` |
 
 ## Troubleshooting
 | Symptom | Likely cause | Fix |
@@ -27,7 +28,8 @@ Keep `make stats` open while you work. Run `make down` when you stop for the day
 | `required variable ... is missing` | No `.env` file | `make env`, then edit the passwords |
 | `manifest unknown` / `not found` when pulling | Image tag doesn't exist | Check tags on Docker Hub; update the `*_TAG` in `.env` |
 | Postgres exits; logs mention `/var/lib/postgresql/data` | Old guides use the pre-18 mount path | Keep the volume at `/var/lib/postgresql` (as in compose) |
-| Postgres seed missing / `Expected 5000 customers` | `data/batch` not present when the volume was first created | Check `ls data/batch`, then `make reset-postgres` |
+| Postgres seed missing / `Seed check failed for ...` | `data/` incomplete when the volume was first created | Check `ls data/batch data/reference`, then `make reset-postgres` |
+| `database "analytics" does not exist` | The Postgres volume was created before the analytics init script existed; init scripts only run on an empty volume | `make reset-postgres` |
 | S3 calls fail with `NoSuchBucket` or DNS errors for `landing.localhost` | Virtual-host addressing | Use `common.s3_client` (path-style); in Spark/Trino set path-style access = true |
 | Catalog tables disappear after restart | Catalog not persisted | Check `CATALOG_URI` points at `/home/iceberg/...db` and the `iceberg_catalog` volume exists (`docker volume ls`) |
 | `permission denied` writing the catalog DB | Volume created with the wrong owner | `docker compose --profile core down`, `docker volume rm banking-lakehouse_iceberg_catalog`, start again |

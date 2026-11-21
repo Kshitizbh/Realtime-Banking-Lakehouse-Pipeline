@@ -1,6 +1,6 @@
 """Train and score the fraud model.
 
-Milestone: M11
+Milestone: Stretch
 Inputs:  silver tables
 Outputs: Airflow DAG
 

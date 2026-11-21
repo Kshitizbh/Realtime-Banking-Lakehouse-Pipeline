@@ -84,9 +84,11 @@ services:
     logging: *default-logging
 
   # ---------------------------------------------------------------------------
-  # Core-banking OLTP database (source system for incremental extraction).
-  # First start runs docker/postgres/init/*.sql, which seeds customers + accounts
-  # from ./data/batch. Postgres 18 images mount data at /var/lib/postgresql.
+  # Postgres, two roles in one container:
+  #   core_banking  source OLTP system (reference tables, customers, accounts)
+  #   analytics     platform database (audit logs, quality results, serving)
+  # First start runs docker/postgres/init/*.sql in order, seeding from ./data.
+  # Postgres 18 images mount data at /var/lib/postgresql.
   # ---------------------------------------------------------------------------
   postgres:
     image: postgres:${POSTGRES_TAG:?set POSTGRES_TAG in .env}
@@ -101,7 +103,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql
       - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
-      - ./data/batch:/seed:ro
+      - ./data:/seed:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 10s

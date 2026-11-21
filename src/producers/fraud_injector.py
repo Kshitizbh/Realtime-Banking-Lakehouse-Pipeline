@@ -1,8 +1,9 @@
-"""Inject labelled fraud scenarios into the replayed stream (the dataset has no fraud labels).
+"""Kafka producer: inject labelled fraud scenarios (the dataset has no fraud labels).
 
-Milestone: M4
+Milestone: M4 (optional)
 Inputs:  Account and customer IDs, scenario config.
-Outputs: Fraud events on bank.transactions plus a ground-truth file s3://landing/fraud_labels/...
+Outputs: Events on banking.transactions.raw plus a ground-truth file
+         s3://landing/source=fraud_labels/...
 
 TODO:
     1. Scenarios: velocity burst, failed-attempt burst, dormant/closed/blocked account activity,

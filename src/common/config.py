@@ -49,10 +49,11 @@ class Settings:
     # Iceberg REST catalog
     iceberg_rest_uri: str
 
-    # Core-banking Postgres
+    # Postgres: one server, two databases
     postgres_host: str
     postgres_port: int
-    postgres_db: str
+    postgres_db: str          # core_banking (source system)
+    analytics_db: str         # analytics (audit, quality, serving)
     postgres_user: str
     postgres_password: str
 
@@ -60,13 +61,24 @@ class Settings:
     local_data_dir: Path
     log_level: str
 
-    @property
-    def postgres_dsn(self) -> str:
-        """Connection string for psycopg (never log this: it contains the password)."""
+    def _dsn(self, dbname: str) -> str:
         return (
-            f"host={self.postgres_host} port={self.postgres_port} dbname={self.postgres_db} "
+            f"host={self.postgres_host} port={self.postgres_port} dbname={dbname} "
             f"user={self.postgres_user} password={self.postgres_password}"
         )
+
+    @property
+    def postgres_dsn(self) -> str:
+        """psycopg connection string for the core_banking SOURCE database.
+
+        Never log this: it contains the password.
+        """
+        return self._dsn(self.postgres_db)
+
+    @property
+    def analytics_dsn(self) -> str:
+        """psycopg connection string for the analytics database (audit, quality, serving)."""
+        return self._dsn(self.analytics_db)
 
 
 @lru_cache(maxsize=1)
@@ -85,6 +97,7 @@ def get_settings() -> Settings:
         postgres_host=_optional("POSTGRES_HOST", "localhost"),
         postgres_port=int(_optional("POSTGRES_HOST_PORT", "5432")),
         postgres_db=_required("POSTGRES_DB"),
+        analytics_db=_optional("ANALYTICS_DB", "analytics"),
         postgres_user=_required("POSTGRES_USER"),
         postgres_password=_required("POSTGRES_PASSWORD"),
         local_data_dir=Path(_optional("LOCAL_DATA_DIR", "./data")).resolve(),
